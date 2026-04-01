@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Last.fm Friends Discovery - v2</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        function Icon({ type, className = "" }) {
+            const icons = {
+                users: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>,
+                music: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>,
+                trending: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>,
+                loader: <svg className={`${className} animate-spin`} fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>,
+                alert: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+                star: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
+            };
+            return icons[type] || null;
+        }
+
+        function App() {
+            const [allData, setAllData] = useState({});
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+            const [progress, setProgress] = useState({ current: 0, total: 0, stage: '' });
+            const [period, setPeriod] = useState('6month');
+            const [minFriends, setMinFriends] = useState(2);
+            const [contentType, setContentType] = useState('artists');
+            const [sortBy, setSortBy] = useState('weighted');
+            
+            // User input fields
+            const [apiKey, setApiKey] = useState('');
+            const [username, setUsername] = useState('');
+            const [hasStarted, setHasStarted] = useState(false);
+
+            const periods = [
+                { value: '7day', label: 'Last 7 Days' },
+                { value: '1month', label: 'Last Month' },
+                { value: '3month', label: 'Last 3 Months' },
+                { value: '6month', label: 'Last 6 Months' },
+                { value: '12month', label: 'Last Year' },
+                { value: 'overall', label: 'All Time' }
+            ];
+
+            const contentTypes = ['artists', 'albums', 'tracks'];
+
+            const handleStart = () => {
+                if (!apiKey.trim() || !username.trim()) {
+                    setError('Please enter both API key and username');
+                    return;
+                }
+                setHasStarted(true);
+                setError(null);
+                fetchAllData();
+            };
+
+            const fetchAllData = async () => {
+                try {
+                    setLoading(true);
+                    setError(null);
+
+                    setProgress({ current: 0, total: 0, stage: 'Fetching friends list...' });
+                    const friendsResponse = await fetch(
+                        `https://ws.audioscrobbler.com/2.0/?method=user.getfriends&user=${username}&api_key=${apiKey}&format=json&limit=200`
+                    );
+                    const friendsData = await friendsResponse.json();
+
+                    if (friendsData.error) {
+                        throw new Error(friendsData.message || 'Failed to fetch friends');
+                    }
+
+                    const friendsList = friendsData.friends?.user || [];
+                    
+                    if (friendsList.length === 0) {
+                        throw new Error('No friends found. Make sure your Last.fm profile is public.');
+                    }
+
+                    const totalRequests = friendsList.length * periods.length * contentTypes.length;
+                    let completedRequests = 0;
+
+                    const dataCache = {};
+
+                    periods.forEach(p => {
+                        dataCache[p.value] = {};
+                        contentTypes.forEach(ct => {
+                            dataCache[p.value][ct] = new Map();
+                        });
+                    });
+
+                    for (const periodObj of periods) {
+                        for (const cType of contentTypes) {
+                            setProgress({ 
+                                current: completedRequests, 
+                                total: totalRequests, 
+                                stage: `Loading ${periodObj.label} - ${cType}...` 
+                            });
+
+                            const methodMap = {
+                                'artists': 'user.gettopartists',
+                                'albums': 'user.gettopalbums',
+                                'tracks': 'user.gettoptracks'
+                            };
+                            const method = methodMap[cType];
+
+                            // Process friends in parallel batches of 5
+                            const BATCH_SIZE = 5;
+                            for (let i = 0; i < friendsList.length; i += BATCH_SIZE) {
+                                const batch = friendsList.slice(i, i + BATCH_SIZE);
+                                
+                                await Promise.all(batch.map(async (friend) => {
+                                    try {
+                                        const response = await fetch(
+                                            `https://ws.audioscrobbler.com/2.0/?method=${method}&user=${friend.name}&period=${periodObj.value}&api_key=${apiKey}&format=json&limit=50`
+                                        );
+                                        const data = await response.json();
+
+                                        completedRequests++;
+                                        setProgress({ 
+                                            current: completedRequests, 
+                                            total: totalRequests, 
+                                            stage: `Loading ${periodObj.label} - ${cType}... (${Math.min(i + BATCH_SIZE, friendsList.length)}/${friendsList.length} friends)` 
+                                        });
+
+                                        let items = [];
+                                        if (cType === 'artists') {
+                                            items = data.topartists?.artist || [];
+                                        } else if (cType === 'albums') {
+                                            items = data.topalbums?.album || [];
+                                        } else if (cType === 'tracks') {
+                                            items = data.toptracks?.track || [];
+                                        }
+
+                                        const contentMap = dataCache[periodObj.value][cType];
+                                        
+                                        items.forEach((rawItem, index) => {
+                                            try {
+                                                let itemKey, itemName, itemArtist, itemImage;
+                                                
+                                                if (cType === 'artists') {
+                                                    itemKey = rawItem.name;
+                                                    itemName = rawItem.name;
+                                                    itemArtist = '';
+                                                    itemImage = rawItem.image?.find(img => img.size === 'large')?.['#text'] || '';
+                                                } else if (cType === 'albums') {
+                                                    itemKey = `${rawItem.artist.name} - ${rawItem.name}`;
+                                                    itemName = rawItem.name;
+                                                    itemArtist = rawItem.artist.name;
+                                                    itemImage = rawItem.image?.find(img => img.size === 'large')?.['#text'] || '';
+                                                } else if (cType === 'tracks') {
+                                                    itemKey = `${rawItem.artist.name} - ${rawItem.name}`;
+                                                    itemName = rawItem.name;
+                                                    itemArtist = rawItem.artist.name;
+                                                    itemImage = rawItem.image?.find(img => img.size === 'large')?.['#text'] || '';
+                                                }
+                                                
+                                                const scrobbles = parseInt(rawItem.playcount) || 0;
+                                                const position = index + 1;
+
+                                                if (!contentMap.has(itemKey)) {
+                                                    contentMap.set(itemKey, {
+                                                        name: itemName,
+                                                        artistName: itemArtist,
+                                                        image: itemImage,
+                                                        friends: [],
+                                                        totalScrobbles: 0,
+                                                        positions: []
+                                                    });
+                                                }
+
+                                                const contentData = contentMap.get(itemKey);
+                                                contentData.friends.push({
+                                                    username: friend.name,
+                                                    realname: friend.realname || friend.name,
+                                                    scrobbles: scrobbles,
+                                                    position: position
+                                                });
+                                                contentData.totalScrobbles += scrobbles;
+                                                contentData.positions.push(position);
+                                            } catch (itemErr) {
+                                                console.error(`Error processing item:`, rawItem, itemErr);
+                                            }
+                                        });
+                                    } catch (err) {
+                                        console.error(`Error fetching data for ${friend.name}:`, err);
+                                        completedRequests++;
+                                    }
+                                }));
+
+                                // Small delay between batches to stay safe under rate limit
+                                await new Promise(resolve => setTimeout(resolve, 200));
+                            }
+                        }
+                    }
+
+                    const processedCache = {};
+                    periods.forEach(p => {
+                        processedCache[p.value] = {};
+                        contentTypes.forEach(ct => {
+                            const contentMap = dataCache[p.value][ct];
+                            const resultsArray = Array.from(contentMap.values()).map(contentItem => {
+                                const avgPosition = contentItem.positions.reduce((a, b) => a + b, 0) / contentItem.positions.length;
+                                const friendCount = contentItem.friends.length;
+                                const positionBonus = contentItem.positions.reduce((sum, pos) => sum + (51 - pos), 0);
+                                const weightedScore = friendCount * 100 + positionBonus;
+
+                                return {
+                                    ...contentItem,
+                                    friendCount,
+                                    avgPosition,
+                                    weightedScore
+                                };
+                            });
+
+                            resultsArray.sort((a, b) => b.weightedScore - a.weightedScore);
+                            processedCache[p.value][ct] = resultsArray;
+                        });
+                    });
+
+                    setAllData(processedCache);
+                    setLoading(false);
+                } catch (err) {
+                    console.error('Main error:', err);
+                    setError(err.message);
+                    setLoading(false);
+                }
+            };
+
+            // Show input form if not started
+            if (!hasStarted) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 p-8 flex items-center justify-center">
+                        <div className="max-w-md w-full">
+                            <div className="bg-white rounded-lg shadow-lg p-8">
+                                <div className="text-center mb-6">
+                                    <Icon type="star" className="w-16 h-16 text-purple-600 mx-auto mb-4" />
+                                    <h1 className="text-3xl font-bold text-gray-800 mb-2">
+                                        Last.fm Music Discovery
+                                    </h1>
+                                    <p className="text-gray-600">
+                                        Discover what your friends are listening to
+                                    </p>
+                                </div>
+
+                                {error && (
+                                    <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                                        {error}
+                                    </div>
+                                )}
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                            Last.fm Username
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={username}
+                                            onChange={(e) => setUsername(e.target.value)}
+                                            placeholder="your_username"
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-transparent"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                            Last.fm API Key
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={apiKey}
+                                            onChange={(e) => setApiKey(e.target.value)}
+                                            placeholder="your_api_key"
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-transparent"
+                                        />
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            Don't have one? <a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline">Get a free API key here</a>
+                                        </p>
+                                    </div>
+
+                                    <button
+                                        onClick={handleStart}
+                                        className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+                                    >
+                                        Start Discovery
+                                    </button>
+                                </div>
+
+                                <div className="mt-6 text-sm text-gray-600">
+                                    <p className="font-semibold mb-2">What this does:</p>
+                                    <ul className="list-disc list-inside space-y-1 text-xs">
+                                        <li>Analyzes your friends' listening habits</li>
+                                        <li>Shows top artists, albums, and tracks</li>
+                                        <li>Helps you discover new music</li>
+                                        <li>Takes a few minutes to load all data</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+            
+            if (loading) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 p-8">
+                        <div className="max-w-4xl mx-auto">
+                            <div className="bg-white rounded-lg shadow-lg p-8 text-center">
+                                <Icon type="loader" className="w-12 h-12 text-purple-600 mx-auto mb-4" />
+                                <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                                    Loading All Data
+                                </h2>
+                                <p className="text-gray-600 mb-2">
+                                    {progress.stage}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                    {progress.current} of {progress.total} requests completed
+                                </p>
+                                {progress.total > 0 && (
+                                    <div className="w-full bg-gray-200 rounded-full h-2 mt-4">
+                                        <div
+                                            className="bg-purple-600 h-2 rounded-full transition-all duration-300"
+                                            style={{ width: `${(progress.current / progress.total) * 100}%` }}
+                                        />
+                                    </div>
+                                )}
+                                <p className="text-sm text-gray-500 mt-4">
+                                    Preloading all time periods and content types...
+                                    <br />
+                                    This will take a few minutes, but then switching will be instant!
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (error) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 p-8">
+                        <div className="max-w-4xl mx-auto">
+                            <div className="bg-red-100 border border-red-400 text-red-700 px-6 py-4 rounded-lg flex items-start gap-3">
+                                <Icon type="alert" className="w-6 h-6 flex-shrink-0 mt-0.5" />
+                                <div>
+                                    <strong className="font-bold block mb-1">Error occurred:</strong>
+                                    <span>{error}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            const currentData = (allData && allData[period] && allData[period][contentType]) ? allData[period][contentType] : [];
+            
+            let sortedData = [...currentData];
+            if (sortBy === 'scrobbles') {
+                sortedData.sort((a, b) => b.totalScrobbles - a.totalScrobbles);
+            } else if (sortBy === 'position') {
+                sortedData.sort((a, b) => a.avgPosition - b.avgPosition);
+            } else {
+                sortedData.sort((a, b) => b.weightedScore - a.weightedScore);
+            }
+            
+            const filteredItems = sortedData.filter(contentItem => contentItem.friendCount >= minFriends);
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 p-8">
+                    <div className="max-w-6xl mx-auto">
+                        <div className="mb-8">
+                            <h1 className="text-4xl font-bold text-gray-800 mb-2 flex items-center gap-3">
+                                <Icon type="star" className="w-10 h-10 text-purple-600" />
+                                Music Discovery from Your Network
+                            </h1>
+                            <p className="text-gray-600">
+                                {contentType.charAt(0).toUpperCase() + contentType.slice(1)} your friends love • Based on @{username}'s network
+                            </p>
+                        </div>
+
+                        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                        Content Type
+                                    </label>
+                                    <select
+                                        value={contentType}
+                                        onChange={(e) => setContentType(e.target.value)}
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-transparent"
+                                    >
+                                        <option value="artists">Artists</option>
+                                        <option value="albums">Albums</option>
+                                        <option value="tracks">Tracks</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                        Time Period
+                                    </label>
+                                    <select
+                                        value={period}
+                                        onChange={(e) => setPeriod(e.target.value)}
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-transparent"
+                                    >
+                                        {periods.map(p => (
+                                            <option key={p.value} value={p.value}>{p.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                        Sort By
+                                    </label>
+                                    <select
+                                        value={sortBy}
+                                        onChange={(e) => setSortBy(e.target.value)}
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-transparent"
+                                    >
+                                        <option value="weighted">Popularity (Weighted)</option>
+                                        <option value="scrobbles">Total Scrobbles</option>
+                                        <option value="position">Average Position</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                        Min Friends ({minFriends}+)
+                                    </label>
+                                    <input
+                                        type="range"
+                                        min="1"
+                                        max="10"
+                                        value={minFriends}
+                                        onChange={(e) => setMinFriends(parseInt(e.target.value))}
+                                        className="w-full"
+                                    />
+                                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                        <span>Show all</span>
+                                        <span>Very popular</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="mt-4 text-sm text-gray-600">
+                                Showing {filteredItems.length} {contentType} • Sorted by {
+                                    sortBy === 'weighted' ? 'popularity and ranking' :
+                                    sortBy === 'scrobbles' ? 'total scrobbles' :
+                                    'average position'
+                                }
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            {filteredItems.map((displayItem, index) => (
+                                <div key={displayItem.name + (displayItem.artistName || '') + index} className="bg-white rounded-lg shadow-lg p-6 hover:shadow-xl transition-shadow">
+                                    <div className="flex items-start gap-6">
+                                        <div className="flex-shrink-0">
+                                            <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${
+                                                index === 0 ? 'bg-yellow-400 text-yellow-900' :
+                                                index === 1 ? 'bg-gray-300 text-gray-700' :
+                                                index === 2 ? 'bg-orange-300 text-orange-900' :
+                                                'bg-purple-100 text-purple-700'
+                                            }`}>
+                                                {index + 1}
+                                            </div>
+                                        </div>
+
+                                        {displayItem.image && (
+                                            <img
+                                                src={displayItem.image}
+                                                alt={displayItem.name}
+                                                className="w-20 h-20 rounded-lg object-cover"
+                                            />
+                                        )}
+
+                                        <div className="flex-1">
+                                            <h2 className="text-2xl font-bold text-gray-800 mb-1">
+                                                {displayItem.name}
+                                            </h2>
+                                            {displayItem.artistName && (
+                                                <p className="text-gray-600 mb-2">
+                                                    by {displayItem.artistName}
+                                                </p>
+                                            )}
+                                            
+                                            <div className="flex flex-wrap gap-4 mb-3">
+                                                <div className="flex items-center gap-2 text-purple-600">
+                                                    <Icon type="users" className="w-5 h-5" />
+                                                    <span className="font-semibold">{displayItem.friendCount} friends</span>
+                                                </div>
+                                                <div className="flex items-center gap-2 text-gray-600">
+                                                    <Icon type="music" className="w-5 h-5" />
+                                                    <span>{displayItem.totalScrobbles.toLocaleString()} total scrobbles</span>
+                                                </div>
+                                                <div className="flex items-center gap-2 text-gray-600">
+                                                    <Icon type="trending" className="w-5 h-5" />
+                                                    <span>Avg position: #{displayItem.avgPosition.toFixed(1)}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-3">
+                                                <p className="text-sm font-semibold text-gray-700 mb-2">
+                                                    Friends who listen:
+                                                </p>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {displayItem.friends
+                                                        .sort((a, b) => b.scrobbles - a.scrobbles)
+                                                        .map((friendData, friendIndex) => (
+                                                            <div
+                                                                key={friendIndex}
+                                                                className="bg-purple-50 px-3 py-1 rounded-full text-sm"
+                                                            >
+                                                                <span className="font-medium text-purple-900">
+                                                                    {friendData.realname}
+                                                                </span>
+                                                                <span className="text-purple-600 ml-1">
+                                                                    (#{friendData.position}, {friendData.scrobbles.toLocaleString()})
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {filteredItems.length === 0 && (
+                            <div className="bg-white rounded-lg shadow-lg p-8 text-center">
+                                <Icon type="alert" className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                                <p className="text-gray-600">
+                                    No {contentType} found with {minFriends}+ friends listening. Try lowering the filter.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
