@@ -308,6 +308,9 @@
                                         <li>Helps you discover new music</li>
                                         <li>Takes a few minutes to load all data</li>
                                     </ul>
+                                    <p className="text-xs text-gray-500 mt-3 italic">
+                                        🔒 Your API key is only used in your browser and is never stored or sent anywhere except to Last.fm's servers.
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -387,7 +390,7 @@
                                 Music Discovery from Your Network
                             </h1>
                             <p className="text-gray-600">
-                                {contentType.charAt(0).toUpperCase() + contentType.slice(1)} your friends love • Based on @{username}'s network
+                                {contentType.charAt(0).toUpperCase() + contentType.slice(1)} your friends love • Based on <a href={`https://www.last.fm/user/${username}`} target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline">@{username}</a>'s network
                             </p>
                         </div>
 
@@ -487,7 +490,20 @@
 
                                         <div className="flex-1">
                                             <h2 className="text-2xl font-bold text-gray-800 mb-1">
-                                                {displayItem.name}
+                                                <a 
+                                                    href={
+                                                        contentType === 'artists' 
+                                                            ? `https://www.last.fm/user/${username}/library/music/${encodeURIComponent(displayItem.name)}`
+                                                            : contentType === 'albums'
+                                                            ? `https://www.last.fm/user/${username}/library/music/${encodeURIComponent(displayItem.artistName)}/${encodeURIComponent(displayItem.name)}`
+                                                            : `https://www.last.fm/user/${username}/library/music/${encodeURIComponent(displayItem.artistName)}/_/${encodeURIComponent(displayItem.name)}`
+                                                    }
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="hover:text-purple-600 transition-colors"
+                                                >
+                                                    {displayItem.name}
+                                                </a>
                                             </h2>
                                             {displayItem.artistName && (
                                                 <p className="text-gray-600 mb-2">
@@ -518,9 +534,18 @@
                                                     {displayItem.friends
                                                         .sort((a, b) => b.scrobbles - a.scrobbles)
                                                         .map((friendData, friendIndex) => (
-                                                            <div
+                                                            <a
                                                                 key={friendIndex}
-                                                                className="bg-purple-50 px-3 py-1 rounded-full text-sm"
+                                                                href={
+                                                                    contentType === 'artists'
+                                                                        ? `https://www.last.fm/user/${friendData.username}/library/music/${encodeURIComponent(displayItem.name)}`
+                                                                        : contentType === 'albums'
+                                                                        ? `https://www.last.fm/user/${friendData.username}/library/music/${encodeURIComponent(displayItem.artistName)}/${encodeURIComponent(displayItem.name)}`
+                                                                        : `https://www.last.fm/user/${friendData.username}/library/music/${encodeURIComponent(displayItem.artistName)}/_/${encodeURIComponent(displayItem.name)}`
+                                                                }
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="bg-purple-50 px-3 py-1 rounded-full text-sm hover:bg-purple-100 transition-colors"
                                                             >
                                                                 <span className="font-medium text-purple-900">
                                                                     {friendData.realname}
@@ -528,7 +553,7 @@
                                                                 <span className="text-purple-600 ml-1">
                                                                     (#{friendData.position}, {friendData.scrobbles.toLocaleString()})
                                                                 </span>
-                                                            </div>
+                                                            </a>
                                                         ))}
                                                 </div>
                                             </div>
